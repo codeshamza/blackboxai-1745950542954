@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MEXC Futures Trading Signal Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    /* Add monospace font family for price cells */
+    #signal-table td[id^="price-"] {
+      font-family: monospace !important;
+    }
+    .loading-spinner {
+      border: 4px solid rgba(0,0,0,0.1);
+      border-left-color: #4f46e5;
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      animation: spin 1s linear infinite;
+      margin: auto;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4">
+  <header class="mb-6">
+    <h1 class="text-3xl font-semibold text-gray-800 text-center">Indicators Based Signals</h1>
+  </header>
+  <div id="loading-screen" class="fixed inset-0 bg-white flex items-center justify-center z-50">
+    <div class="loading-spinner"></div>
+  </div>
+
+  <main>
+    <div class="flex justify-between items-center mb-4">
+      <div id="last-updated" class="text-gray-700 font-semibold"></div>
+      <div id="average-ping" class="text-gray-700 font-semibold"></div>
+    </div>
+    <div id="loading" class="flex justify-center my-8" role="status">
+      <div class="loading-spinner"></div>
+    </div>
+    <div class="overflow-x-auto">
+      <table id="signal-table" class="min-w-full bg-white rounded-lg shadow-md hidden">
+        <thead class="bg-indigo-600 text-white">
+          <tr>
+            <th class="px-4 py-2 text-left">Pair</th>
+            <th class="px-4 py-2 text-left">Action</th>
+            <th class="px-4 py-2 text-left">JB Safe</th>
+            <th class="px-4 py-2 text-left">Volatility Compression</th>
+            <th class="px-4 py-2 text-left">Trend</th>
+            <th class="px-4 py-2 text-left">RSI</th>
+            <th class="px-4 py-2 text-left">MACD Status</th>
+            <th class="px-4 py-2 text-left">VWAP Status</th>
+            <th class="px-4 py-2 text-left">Volatility Change</th>
+            <th class="px-4 py-2 text-left">JB Change</th>
+            <th class="px-4 py-2 text-left font-semibold text-yellow-500">Current Price</th>
+          </tr>
+        </thead>
+        <tbody id="signal-tbody" class="text-gray-700"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <footer class="mt-8 text-center text-gray-500 text-sm">
+    Data sourced from MEXC public API. Signals generated based on technical indicators.
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
