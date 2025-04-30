@@ -1,11 +1,12 @@
-// app.js - Fetch MEXC futures data, calculate indicators, generate signals, and render dashboard
+// app.js - Fetch Binance futures data, calculate indicators, generate signals, and render dashboard
 
 const pairs = [
   "SOLUSDT","BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT","ADAUSDT","DOGEUSDT","SHIBUSDT",
   "DOTUSDT","ATOMUSDT","LTCUSDT","AVAXUSDT","LINKUSDT","TRXUSDT","NEARUSDT","APTUSDT",
   "BCHUSDT","FILUSDT","MATICUSDT","ETCUSDT","XLMUSDT","VETUSDT","THETAUSDT","RUNEUSDT",
   "FTMUSDT","SANDUSDT","MANAUSDT","AAVEUSDT","LDOUSDT","CRVUSDT","MKRUSDT","COMPUSDT",
-  "UNIUSDT","APEUSDT","FLOKIUSDT","GRTUSDT","ALGOUSDT","ICPUSDT","HBARUSDT","EOSUSDT"
+  "UNIUSDT","APEUSDT","FLOKIUSDT","GRTUSDT","ALGOUSDT","ICPUSDT","HBARUSDT","EOSUSDT",
+  "FARTCOINUSDT","DOGECOINUSDT","SHIBAINUUSDT","SOLANAUSDT","POLKADOTUSDT"
 ];
 
 // Constants for calculations
@@ -188,15 +189,15 @@ function signChange(arr, shift = 4) {
 }
 
 async function fetchOHLCV(pair) {
-  // Use local proxy server to bypass CORS
-  const mexcPair = pair.slice(0, -4) + "_USDT";
-  const url = `/api/kline?symbol=${mexcPair}&period=15m&limit=150`;
+  // Fetch directly from Binance API
+  const binancePair = pair.replace('_', '');
+  const url = `https://api.binance.com/api/v3/klines?symbol=${binancePair}&interval=15m&limit=150`;
   try {
     const response = await fetch(url);
     const data = await response.json();
-    if (data && data.data && Array.isArray(data.data)) {
-      // data.data is array of arrays: [timestamp, open, high, low, close, volume]
-      return data.data.map(item => ({
+    if (Array.isArray(data)) {
+      // data is array of arrays: [timestamp, open, high, low, close, volume, ...]
+      return data.map(item => ({
         timestamp: item[0],
         open: parseFloat(item[1]),
         high: parseFloat(item[2]),
@@ -212,6 +213,63 @@ async function fetchOHLCV(pair) {
     console.error(`Error fetching data for ${pair}`, error);
     return null;
   }
+}
+
+async function fetchCurrentPrice(pair) {
+  // Fetch directly from Binance API
+  const binancePair = pair.replace('_', '');
+  const url = `https://api.binance.com/api/v3/ticker/price?symbol=${binancePair}`;
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+    if (data && data.price) {
+      return parseFloat(data.price);
+    } else {
+      console.error(`Failed to fetch current price for ${pair}`, data);
+      return null;
+    }
+  } catch (error) {
+    console.error(`Error fetching current price for ${pair}`, error);
+    return null;
+  }
+}
+
+// Render table rows with colors and current price, with unique IDs for each cell
+function renderRow(pair, signals, currentPrice) {
+  function colorForBool(val) {
+    return val ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold';
+  }
+  function colorForStatus(status, positiveValues) {
+    if (status === 'Neutral') return 'text-yellow-500 font-semibold';
+    return positiveValues.includes(status) ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold';
+  }
+  // Color RSI value based on thresholds
+  let rsiClass = '';
+  const rsiValNum = parseFloat(signals.rsi);
+  if (!isNaN(rsiValNum)) {
+    if (rsiValNum < 30) {
+      rsiClass = 'text-red-600 font-semibold';
+    } else if (rsiValNum < 70) {
+      rsiClass = 'text-yellow-600 font-semibold';
+    } else {
+      rsiClass = 'text-green-600 font-semibold';
+    }
+  }
+  return `
+    <tr class="border-b hover:bg-gray-100" id="row-${pair}">
+      <td class="px-4 py-2 font-semibold" id="pair-${pair}">${pair}</td>
+      <td class="px-4 py-2 font-bold ${signals.action === "BUY" ? "text-green-700" : signals.action === "SELL" ? "text-red-700" : "text-yellow-500"}" id="action-${pair}">${signals.action}</td>
+      <td class="px-4 py-2 ${colorForBool(signals.jbSafe)}" id="jbSafe-${pair}">${signals.jbSafe ? "✔️" : "❌"}</td>
+      <td class="px-4 py-2 ${colorForBool(signals.volatilityCompression)}" id="volComp-${pair}">${signals.volatilityCompression ? "✔️" : "❌"}</td>
+      <td class="px-4 py-2 ${signals.trend === 'UP' ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}" id="trend-${pair}">${signals.trend}</td>
+      <td class="px-4 py-2 ${rsiClass}" id="rsi-${pair}">${signals.rsi}</td>
+      <td class="px-4 py-2 ${colorForStatus(signals.macdStatus, ['Bullish'])}" id="macd-${pair}">${signals.macdStatus}</td>
+      <td class="px-4 py-2 ${colorForStatus(signals.vwapStatus, ['Above'])}" id="vwap-${pair}">${signals.vwapStatus}</td>
+      <td class="px-4 py-2 ${colorForStatus(signals.volatilityChange, ['Up'])}" id="volChange-${pair}">${signals.volatilityChange}</td>
+      <td class="px-4 py-2 ${colorForStatus(signals.jbChangeStatus, ['Up'])}" id="jbChange-${pair}">${signals.jbChangeStatus}</td>
+      <td class="px-4 py-2 font-mono text-right font-extrabold text-gray-900" id="price-${pair}">${currentPrice !== null ? currentPrice.toFixed(4) : 'N/A'}</td>
+    </tr>
+  `;
 }
 
 // Calculate signals and indicators for a pair
@@ -347,231 +405,3 @@ function calculateSignals(ohlcv) {
     positionSize,
   };
 }
-
-async function fetchCurrentPrice(pair) {
-  // Use local proxy server to bypass CORS
-  const mexcPair = pair.slice(0, -4) + "_USDT";
-  const url = `/api/ticker?symbol=${mexcPair}`;
-  try {
-    const response = await fetch(url);
-    const data = await response.json();
-    if (data && data.data && data.data.length > 0) {
-      return parseFloat(data.data[0].last);
-    } else {
-      console.error(`Failed to fetch current price for ${pair}`, data);
-      return null;
-    }
-  } catch (error) {
-    console.error(`Error fetching current price for ${pair}`, error);
-    return null;
-  }
-}
-
-// Render table rows with colors and current price, with unique IDs for each cell
-function renderRow(pair, signals, currentPrice) {
-  function colorForBool(val) {
-    return val ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold';
-  }
-  function colorForStatus(status, positiveValues) {
-    if (status === 'Neutral') return 'text-yellow-500 font-semibold';
-    return positiveValues.includes(status) ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold';
-  }
-  return `
-    <tr class="border-b hover:bg-gray-100" id="row-${pair}">
-      <td class="px-4 py-2 font-semibold" id="pair-${pair}">${pair}</td>
-      <td class="px-4 py-2 font-bold ${signals.action === "BUY" ? "text-green-700" : signals.action === "SELL" ? "text-red-700" : "text-yellow-500"}" id="action-${pair}">${signals.action}</td>
-      <td class="px-4 py-2 ${colorForBool(signals.jbSafe)}" id="jbSafe-${pair}">${signals.jbSafe ? "✔️" : "❌"}</td>
-      <td class="px-4 py-2 ${colorForBool(signals.volatilityCompression)}" id="volComp-${pair}">${signals.volatilityCompression ? "✔️" : "❌"}</td>
-      <td class="px-4 py-2 ${signals.trend === 'UP' ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}" id="trend-${pair}">${signals.trend}</td>
-      <td class="px-4 py-2" id="rsi-${pair}">${signals.rsi}</td>
-      <td class="px-4 py-2 ${colorForStatus(signals.macdStatus, ['Bullish'])}" id="macd-${pair}">${signals.macdStatus}</td>
-      <td class="px-4 py-2 ${colorForStatus(signals.vwapStatus, ['Above'])}" id="vwap-${pair}">${signals.vwapStatus}</td>
-      <td class="px-4 py-2 ${colorForStatus(signals.volatilityChange, ['Up'])}" id="volChange-${pair}">${signals.volatilityChange}</td>
-      <td class="px-4 py-2 ${colorForStatus(signals.jbChangeStatus, ['Up'])}" id="jbChange-${pair}">${signals.jbChangeStatus}</td>
-      <td class="px-4 py-2" id="posSize-${pair}">${signals.positionSize}</td>
-      <td class="px-4 py-2 font-mono text-right" id="price-${pair}">${currentPrice !== null ? currentPrice.toFixed(4) : 'N/A'}</td>
-    </tr>
-  `;
-}
-
-// Update existing row cells with new data without reloading entire table
-function updateRow(pair, signals, currentPrice, ping) {
-  function colorForBool(val) {
-    return val ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold';
-  }
-  function colorForStatus(status, positiveValues) {
-    if (status === 'Neutral') return 'text-yellow-500 font-semibold';
-    return positiveValues.includes(status) ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold';
-  }
-
-  const actionCell = document.getElementById(`action-${pair}`);
-  if (actionCell) {
-    actionCell.textContent = signals.action;
-    actionCell.className = `px-4 py-2 font-bold ${
-      signals.action === "BUY" ? "text-green-700" : signals.action === "SELL" ? "text-red-700" : "text-yellow-500"
-    }`;
-  }
-
-  const jbSafeCell = document.getElementById(`jbSafe-${pair}`);
-  if (jbSafeCell) {
-    jbSafeCell.textContent = signals.jbSafe ? "✔️" : "❌";
-    jbSafeCell.className = `px-4 py-2 ${colorForBool(signals.jbSafe)}`;
-  }
-
-  const volCompCell = document.getElementById(`volComp-${pair}`);
-  if (volCompCell) {
-    volCompCell.textContent = signals.volatilityCompression ? "✔️" : "❌";
-    volCompCell.className = `px-4 py-2 ${colorForBool(signals.volatilityCompression)}`;
-  }
-
-  const trendCell = document.getElementById(`trend-${pair}`);
-  if (trendCell) {
-    trendCell.textContent = signals.trend;
-    trendCell.className = `px-4 py-2 ${signals.trend === 'UP' ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}`;
-  }
-
-  const rsiCell = document.getElementById(`rsi-${pair}`);
-  if (rsiCell) {
-    rsiCell.textContent = signals.rsi;
-  }
-
-  const macdCell = document.getElementById(`macd-${pair}`);
-  if (macdCell) {
-    macdCell.textContent = signals.macdStatus;
-    macdCell.className = `px-4 py-2 ${colorForStatus(signals.macdStatus, ['Bullish'])}`;
-  }
-
-  const vwapCell = document.getElementById(`vwap-${pair}`);
-  if (vwapCell) {
-    vwapCell.textContent = signals.vwapStatus;
-    vwapCell.className = `px-4 py-2 ${colorForStatus(signals.vwapStatus, ['Above'])}`;
-  }
-
-  const volChangeCell = document.getElementById(`volChange-${pair}`);
-  if (volChangeCell) {
-    volChangeCell.textContent = signals.volatilityChange;
-    volChangeCell.className = `px-4 py-2 ${colorForStatus(signals.volatilityChange, ['Up'])}`;
-  }
-
-  const jbChangeCell = document.getElementById(`jbChange-${pair}`);
-  if (jbChangeCell) {
-    jbChangeCell.textContent = signals.jbChangeStatus;
-    jbChangeCell.className = `px-4 py-2 ${colorForStatus(signals.jbChangeStatus, ['Up'])}`;
-  }
-
-  const pingCell = document.getElementById(`posSize-${pair}`);
-  if (pingCell) {
-    pingCell.textContent = ping !== null ? ping.toFixed(0) : 'N/A';
-  }
-
-  const priceCell = document.getElementById(`price-${pair}`);
-  if (priceCell) {
-    priceCell.textContent = currentPrice !== null ? currentPrice.toFixed(4) : 'N/A';
-  }
-}
-
-// Main function to fetch data and update dashboard
-async function updateDashboard() {
-  const tbody = document.getElementById("signal-tbody");
-  const loading = document.getElementById("loading");
-
-  tbody.innerHTML = "";
-  loading.style.display = "flex";
-
-  for (let i = 0; i < pairs.length; i++) {
-    const pair = pairs[i];
-    try {
-      const ohlcv = await fetchOHLCV(pair);
-      if (!ohlcv) {
-        console.warn(`No OHLCV data for ${pair}`);
-        continue;
-      }
-      const signals = calculateSignals(ohlcv);
-      const currentPrice = await fetchCurrentPrice(pair);
-      tbody.innerHTML += renderRow(pair, signals, currentPrice);
-    } catch (error) {
-      console.error(`Error processing ${pair}:`, error);
-    }
-  }
-
-  loading.style.display = "none";
-  document.getElementById("signal-table").classList.remove("hidden");
-};
-
-window.onload = () => {
-  updateDashboard(); // initial full update
-
-  // Refresh entire table every 1 minute
-  setInterval(() => {
-    updateDashboard();
-  }, 60000);
-};
-
-// Remove the second duplicate window.onload handler below to prevent multiple reloads
-// The following duplicate window.onload handler should be removed:
-
-// window.onload = () => {
-//   updateDashboard();
-// };
-
-// Remove duplicate setInterval calling updateDashboard every 1 second
-// Remove any other duplicate calls to updateDashboard intervals
-
-// Main function to fetch data and update dashboard
-async function updateDashboard() {
-  const tbody = document.getElementById("signal-tbody");
-  const loading = document.getElementById("loading");
-  tbody.innerHTML = "";
-  loading.style.display = "flex";
-
-  for (let i = 0; i < pairs.length; i++) {
-    const pair = pairs[i];
-    try {
-      const ohlcv = await fetchOHLCV(pair);
-      if (!ohlcv) {
-        console.warn(`No OHLCV data for ${pair}`);
-        continue;
-      }
-      const signals = calculateSignals(ohlcv);
-      const currentPrice = await fetchCurrentPrice(pair);
-      tbody.innerHTML += renderRow(pair, signals, currentPrice);
-    } catch (error) {
-      console.error(`Error processing ${pair}:`, error);
-    }
-  }
-
-  loading.style.display = "none";
-  document.getElementById("signal-table").classList.remove("hidden");
-}
-
-async function updateDashboard() {
-  const tbody = document.getElementById("signal-tbody");
-  const loading = document.getElementById("loading");
-  tbody.innerHTML = "";
-  loading.style.display = "flex";
-
-  for (let i = 0; i < pairs.length; i++) {
-    const pair = pairs[i];
-    try {
-      const ohlcv = await fetchOHLCV(pair);
-      if (!ohlcv) {
-        console.warn(`No OHLCV data for ${pair}`);
-        continue;
-      }
-      const signals = calculateSignals(ohlcv);
-      const currentPrice = await fetchCurrentPrice(pair);
-      tbody.innerHTML += renderRow(pair, signals, currentPrice);
-    } catch (error) {
-      console.error(`Error processing ${pair}:`, error);
-    }
-  }
-
-  loading.style.display = "none";
-  document.getElementById("signal-table").classList.remove("hidden");
-}
-
-// Run on page load and update every 1 minute
-window.onload = () => {
-  updateDashboard();
-  setInterval(updateDashboard, 60000);
-};
